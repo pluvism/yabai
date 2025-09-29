@@ -9,6 +9,9 @@
     "prepare": "npm run build",
     "test": "tsc -p tsconfig.json && node dist/test/yabai.test.js && node dist/test/message.test.js"
   },
+  "files": [
+    "dist"
+  ],
   "keywords": [],
   "author": "pluvism",
   "license": "MIT",
