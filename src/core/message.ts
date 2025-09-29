@@ -1,5 +1,14 @@
-import { WAMessage, WASocket, downloadMediaMessage, proto, getContentType, jidNormalizedUser, areJidsSameUser, extractMessageContent } from 'baileys'
-import { Readable } from 'stream'
+import {
+    WAMessage,
+    WASocket,
+    downloadMediaMessage,
+    proto,
+    getContentType,
+    jidNormalizedUser,
+    areJidsSameUser,
+    extractMessageContent
+} from 'baileys';
+import { Readable } from 'stream';
 
 export class Msg {
     public id: string;
@@ -22,8 +31,12 @@ export class Msg {
         this.id = raw.key.id!;
         this.chat = jidNormalizedUser(raw.key.remoteJid!);
         this.isGroup = this.chat.endsWith('@g.us');
-        this.sender = jidNormalizedUser(raw.key.participant || raw.key.remoteJid!);
-        this.fromMe = raw.key.fromMe || areJidsSameUser(this.sender, jidNormalizedUser(sock.user?.id!));
+        this.sender = jidNormalizedUser(
+            raw.key.participant || raw.key.remoteJid!
+        );
+        this.fromMe =
+            raw.key.fromMe ||
+            areJidsSameUser(this.sender, jidNormalizedUser(sock.user?.id!));
 
         const message = this.parseMessage(raw.message);
         this.type = message ? getContentType(message) : undefined;
@@ -41,25 +54,38 @@ export class Msg {
                 key: {
                     remoteJid: this.chat,
                     id: contextInfo.stanzaId!,
-                    participant: contextInfo.participant,
+                    participant: contextInfo.participant
                 },
-                message: contextInfo.quotedMessage,
+                message: contextInfo.quotedMessage
             };
             this.quoted = new Msg(fullQuotedMsg, sock);
         }
     }
 
-    private parseMessage(message: proto.IMessage | null | undefined): proto.IMessage | undefined {
+    private parseMessage(
+        message: proto.IMessage | null | undefined
+    ): proto.IMessage | undefined {
         return message || undefined;
     }
 
     private getBody(message: proto.IMessage | null | undefined): string {
-        return message?.conversation || message?.extendedTextMessage?.text || message?.imageMessage?.caption || message?.videoMessage?.caption || "";
+        return (
+            message?.conversation ||
+            message?.extendedTextMessage?.text ||
+            message?.imageMessage?.caption ||
+            message?.videoMessage?.caption ||
+            ''
+        );
     }
 
-    private getContextInfo(message: proto.IMessage | null | undefined): proto.IContextInfo | undefined {
+    private getContextInfo(
+        message: proto.IMessage | null | undefined
+    ): proto.IContextInfo | undefined {
         if (!message) return undefined;
-        const contextInfo = message.extendedTextMessage?.contextInfo || message.imageMessage?.contextInfo || message.videoMessage?.contextInfo;
+        const contextInfo =
+            message.extendedTextMessage?.contextInfo ||
+            message.imageMessage?.contextInfo ||
+            message.videoMessage?.contextInfo;
         return contextInfo || undefined;
     }
 

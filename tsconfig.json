@@ -1,21 +1,14 @@
 {
-  "compilerOptions": {
-    "declaration": true,
-    "target": "esnext",
-    "lib": ["ES2019", "DOM"],
-    "module": "nodenext",
-    "outDir": "./dist",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true
-  },
-  "include": [
-    "src/**/*.ts",
-    "test/**/*.ts",
-    "example/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+    "compilerOptions": {
+        "declaration": true,
+        "target": "esnext",
+        "lib": ["ES2019", "DOM"],
+        "module": "nodenext",
+        "outDir": "./dist",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true
+    },
+    "include": ["src/**/*.ts", "test/**/*.ts", "example/**/*.ts"],
+    "exclude": ["node_modules", "dist"]
 }

@@ -1,29 +1,29 @@
 {
-  "name": "yabai",
-  "version": "1.0.0",
-  "description": "",
-  "type": "module",
-  "main": "./dist/index.js",
-  "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "prepare": "npm run build",
-    "test": "tsc -p tsconfig.json && node dist/test/yabai.test.js && node dist/test/message.test.js"
-  },
-  "files": [
-    "dist"
-  ],
-  "keywords": [],
-  "author": "pluvism",
-  "license": "MIT",
-  "devDependencies": {
-    "@types/node": "^24.2.1",
-    "@types/ws": "^8.18.1",
-    "@typescript-eslint/eslint-plugin": "^8.37.0",
-    "@typescript-eslint/parser": "^8.37.0",
-    "eslint": "^9.31.0",
-    "typescript": "^5.8.3"
-  },
-  "dependencies": {
-    "baileys": "github:whiskeysockets/baileys"
-  }
+    "name": "yabai",
+    "version": "1.0.0",
+    "description": "",
+    "type": "module",
+    "main": "./dist/index.js",
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "prepare": "npm run build",
+        "test": "tsc -p tsconfig.json && node dist/test/yabai.test.js && node dist/test/message.test.js"
+    },
+    "files": [
+        "dist"
+    ],
+    "keywords": [],
+    "author": "pluvism",
+    "license": "MIT",
+    "devDependencies": {
+        "@types/node": "^24.2.1",
+        "@types/ws": "^8.18.1",
+        "@typescript-eslint/eslint-plugin": "^8.37.0",
+        "@typescript-eslint/parser": "^8.37.0",
+        "eslint": "^9.31.0",
+        "typescript": "^5.8.3"
+    },
+    "dependencies": {
+        "baileys": "github:whiskeysockets/baileys"
+    }
 }

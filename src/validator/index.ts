@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-
 export class ZodError extends Error {
     issues: { message: string; path: (string | number)[] }[];
 
@@ -40,7 +39,12 @@ class ZodObject<T extends Record<string, ZodTypeAny>> {
                 parsed[key] = this._def.shape[key].parse(data[key]);
             } catch (e) {
                 if (e instanceof ZodError) {
-                    issues.push(...e.issues.map(issue => ({ ...issue, path: [key, ...issue.path] })));
+                    issues.push(
+                        ...e.issues.map((issue) => ({
+                            ...issue,
+                            path: [key, ...issue.path]
+                        }))
+                    );
                 } else {
                     issues.push({ message: (e as Error).message, path: [key] });
                 }
@@ -61,11 +65,13 @@ class ZodCoercion {
             parse(value: any): number {
                 const num = Number(value);
                 if (isNaN(num)) {
-                    throw new ZodError([{ message: 'Expected a number', path: [] }]);
+                    throw new ZodError([
+                        { message: 'Expected a number', path: [] }
+                    ]);
                 }
                 return num;
             },
-            _def: {},
+            _def: {}
         };
     }
 }
@@ -73,8 +79,9 @@ class ZodCoercion {
 type infer<T extends ZodTypeAny> = ReturnType<T['parse']>;
 
 const z = {
-    object: <T extends Record<string, ZodTypeAny>>(shape: T) => new ZodObject(shape),
-    coerce: new ZodCoercion(),
+    object: <T extends Record<string, ZodTypeAny>>(shape: T) =>
+        new ZodObject(shape),
+    coerce: new ZodCoercion()
 };
 
 type ZodType = ZodObject<any> | { parse: (data: any) => any };
