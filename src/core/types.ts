@@ -1,57 +1,57 @@
-import { UserFacingSocketConfig } from 'baileys';
-import { z, ZodTypeAny, infer as zInfer } from '../validator/index.js';
-import { Msg } from './message.js';
+import { UserFacingSocketConfig } from 'baileys'
+import { z, ZodTypeAny, infer as zInfer } from '../validator/index.js'
+import { Msg } from './message.js'
 
 /** --- Type‑level Param Extraction (space‑delimited) --- **/
 type SplitOnSpace<S extends string> = S extends `${infer Head} ${infer Rest}`
     ? [Head, ...SplitOnSpace<Rest>]
-    : [S];
+    : [S]
 
 type ExtractParam<Seg extends string, Next> = Seg extends `:${infer P}?`
     ? { [K in P]?: string } & Next
     : Seg extends `:${infer P}`
       ? { [K in P]: string } & Next
-      : Next;
+      : Next
 
 type ExtractParamsInternal<Parts extends readonly string[]> = Parts extends [
     infer First extends string,
     ...infer Rest extends string[]
 ]
     ? ExtractParam<First, ExtractParamsInternal<Rest>>
-    : {};
+    : {}
 
 export type ExtractParams<Pattern extends string> = ExtractParamsInternal<
     SplitOnSpace<Pattern>
->;
+>
 
 /** --- Context & Middleware Types --- **/
 export interface CommandContext<P = Record<string, any>> {
-    msg: Msg;
-    raw: any;
-    params: P;
-    set: { status: number; headers: Record<string, string> };
-    result?: any;
-    error?: unknown;
+    msg: Msg
+    raw: any
+    params: P
+    set: { status: number; headers: Record<string, string> }
+    result?: any
+    error?: unknown
 }
 
 export type Middleware<T = any> = (
     ctx: CommandContext<T>,
     next: () => Promise<void>
-) => any;
+) => any
 
-export type Handler<P = any> = (ctx: CommandContext<P>) => any | Promise<any>;
+export type Handler<P = any> = (ctx: CommandContext<P>) => any | Promise<any>
 export type ErrorHandler = (arg: {
-    error: any;
-    ctx: CommandContext<any>;
-}) => any;
-export type Hook = (ctx: CommandContext<any>) => any | Promise<any>;
+    error: any
+    ctx: CommandContext<any>
+}) => any
+export type Hook = (ctx: CommandContext<any>) => any | Promise<any>
 
 export interface CmdOptions<P = any> {
-    description?: string;
-    beforeHandle?: Middleware;
-    afterHandle?: Middleware<P>;
-    error?: ErrorHandler;
-    schema?: ZodTypeAny;
+    description?: string
+    beforeHandle?: Middleware
+    afterHandle?: Middleware<P>
+    error?: ErrorHandler
+    schema?: ZodTypeAny
 }
 
 export const HOOK_NAMES = [
@@ -60,53 +60,53 @@ export const HOOK_NAMES = [
     'parse',
     'transform',
     'afterResponse'
-] as const;
+] as const
 
 export const SCOPE_TYPES = {
     GLOBAL: 'global',
     SCOPED: 'scoped',
     LOCAL: 'local'
-} as const;
+} as const
 
-export type ScopesType = typeof SCOPE_TYPES;
-export type Scope = ScopesType[keyof ScopesType];
-export type HooksType = typeof HOOK_NAMES;
-export type HookName = HooksType[number];
-export type HookRecord = Record<HookName, Hook[]>;
+export type ScopesType = typeof SCOPE_TYPES
+export type Scope = ScopesType[keyof ScopesType]
+export type HooksType = typeof HOOK_NAMES
+export type HookName = HooksType[number]
+export type HookRecord = Record<HookName, Hook[]>
 
 export interface AuthType {
-    type: 'local'; //TODO: mongodb? sql?
-    path: string;
+    type: 'local' //TODO: mongodb? sql?
+    path: string
 }
 
-export type Digit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
-export type DigitString = `${Digit}${string}`;
+export type Digit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
+export type DigitString = `${Digit}${string}`
 
 export interface PairingConfig {
-    number: DigitString;
-    callback?: (code: string) => void;
+    number: DigitString
+    callback?: (code: string) => void
 }
 
 export interface YabaiConfig extends Omit<UserFacingSocketConfig, 'auth'> {
-    enableHelp?: boolean;
-    printQRCode?: boolean;
-    pairing?: PairingConfig;
-    auth: AuthType;
-    scope: Scope;
-    prefix: string;
-    description: string;
+    enableHelp?: boolean
+    printQRCode?: boolean
+    pairing?: PairingConfig
+    auth: AuthType
+    scope: Scope
+    prefix: string
+    description: string
 }
 
-export type PrefixType = string | RegExp;
+export type PrefixType = string | RegExp
 
 export interface IMiddlewares {
-    beforeHandle: Middleware[];
-    afterHandle: Middleware[];
-    error: ErrorHandler[];
+    beforeHandle: Middleware[]
+    afterHandle: Middleware[]
+    error: ErrorHandler[]
 }
 
 export type MiddlewareMap = {
-    beforeHandle: Middleware;
-    afterHandle: Middleware;
-    error: ErrorHandler;
-};
+    beforeHandle: Middleware
+    afterHandle: Middleware
+    error: ErrorHandler
+}
