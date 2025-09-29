@@ -24,8 +24,6 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "@types/node": "^24.2.1",
-    "baileys": "github:whiskeysockets/baileys",
-    "typescript": "^5.8.3"
+    "baileys": "github:whiskeysockets/baileys"
   }
 }

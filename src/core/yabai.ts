@@ -1,6 +1,6 @@
 import { z, ZodTypeAny, infer as zInfer } from "../validator/index.js";
-import { WAMessage, WASocket } from "baileys";
-import { isObject, escapeRegExp, cloneRecordOfArrays } from "../utils/index.js";
+import makeWASocket, { ConnectionState, DisconnectReason, useMultiFileAuthState, UserFacingSocketConfig, WAMessage, WASocket } from "baileys";
+import { isObject, escapeRegExp, cloneRecordOfArrays, isDigit } from "../utils/index.js";
 import { Msg, serialize } from "./message.js";
 import {
     CommandContext,
@@ -21,13 +21,15 @@ import {
 } from "./types.js";
 import { MiddlewareEngine } from "./middleware.js";
 import { CommandDef } from "./command.js";
-import { connect } from "../connection/index.js";
+import { Boom } from "@hapi/boom";
+import P from 'pino'
 
-const DEFAULT_CONFIG: YabaiConfig = {
-  enableHelp: true,
+const DEFAULT_CONFIG: YabaiConfig  = {
   scope: SCOPE_TYPES.LOCAL,
   prefix: "",
   description: "",
+  auth: { type: 'local', path: '.auth_yabai' },
+  logger: P({ level: 'warn'})
 };
 
 type Plugin =
@@ -41,19 +43,26 @@ interface YabaiSnapshot {
     hooks: HookRecord
 }
 
+class ConfigError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'ConfigError'
+  }
+}
+
 /** --- Bot Class --- **/
 export class Yabai {
   static GLOBAL = SCOPE_TYPES.GLOBAL;
   static SCOPED = SCOPE_TYPES.SCOPED;
   static LOCAL  = SCOPE_TYPES.LOCAL;
 
-  private config:      YabaiConfig      = DEFAULT_CONFIG;
+  config:      YabaiConfig      = DEFAULT_CONFIG;
   private middleware:  MiddlewareEngine = new MiddlewareEngine()
   private children:    Set<Yabai>       = new Set()
   private parent:      Yabai | null     = null
   public commands:    CommandDef[]     = []
   private prefixStack: PrefixType[]     = [this.config.prefix]
-  public sock: WASocket | null = null;
+  sock: WASocket | null = null;
   
   private hooks: HookRecord = HOOK_NAMES.reduce<Record<HookName, Hook[]>>((acc, name) => {
       acc[name] = [];
@@ -72,7 +81,12 @@ export class Yabai {
   };
 
   constructor(config: Partial<YabaiConfig> = {}) {
-    this.config = Object.freeze({ ...DEFAULT_CONFIG, ...config });
+    
+
+    const extendConfig = Object.freeze({ ...DEFAULT_CONFIG, ...config });
+    this.validateConfig(extendConfig)
+
+    this.config = extendConfig
     this.logger = console; //TODO: logger
 
     if (this.config.enableHelp) {
@@ -87,6 +101,22 @@ export class Yabai {
             msg.reply(`*Available Commands:*\n${helpLines.join('\n')}`);
         }, { description: 'Displays this help message' });
     }
+  }
+
+  private validateConfig(config: Partial<YabaiConfig>): asserts config is YabaiConfig {
+    if (config.printQRCode && config.pairing) {
+      throw new ConfigError('Cannot set `config.printQRCode` when config.pairing is set')
+    }
+
+    if (config.pairing) {
+      if (!("number" in config.pairing)) {
+        throw new ConfigError('`config.pairing` missing required property `number`')
+      }
+      if (!isDigit(config.pairing.number)) {
+        throw new ConfigError('Expected valid number for `config.pairing.number`')
+      }
+    }
+
   }
 
   private setParent(instance: Yabai): this {
@@ -228,12 +258,22 @@ export class Yabai {
     }
     return this
   }
+
+  onPairing(fn: (code: string) => void) {
+     if (!this.config.pairing || Object.keys(this.config.pairing).length === 0) {
+      throw new Error('This instance does not login using pairing code')
+     }
+     this.config.pairing.callback = fn
+     return this
+  }
   
 
   onRequest(fn: Hook): this { return this.on('request', fn) }
   onParse(fn: Hook): this { return this.on('parse', fn) }
   onTransform(fn: Hook): this { return this.on('transform', fn) }
   onAfterResponse(fn: Hook): this { return this.on('afterResponse', fn) }
+
+
 
   onBeforeHandle(fn: Middleware): this {
     this.middleware.addBeforeHandle(fn)
@@ -456,7 +496,64 @@ export class Yabai {
     return this.middleware.executeError(ctx, error)
   }
 
-  async connect(authPath: string = 'auth_info_baileys') {
-    return connect(this, authPath);
+
+  async connect(callback?: (sock: WASocket) => any) {
+
+    const connect = async(instance: this) => {
+    const { state, saveCreds } = await useMultiFileAuthState(this.config.auth.path);
+    // TODO: another auth type
+    const sock = makeWASocket({
+      ...this.config,
+      auth: state,
+    });
+
+    this.sock = sock;
+    // Config already validated on this.constructor
+    if (!sock.authState.creds.registered) {
+      setTimeout(async() => {
+        if (this.config.pairing?.number) {
+         const code = await sock.requestPairingCode(this.config.pairing.number)
+         if (this.config.pairing.callback) {
+          this.config.pairing.callback(code)
+         } else {
+          console.log('WARNING!! Implicit callback() for pairing, set onPairing() as console.log()')
+          console.log(code)
+         }
+        }
+      }, 3000)
+    }
+
+    sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('connection.update', (update: Partial<ConnectionState>) => {
+      const { connection, lastDisconnect } = update;
+      if (connection === 'close') {
+        const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+        this.logger.info('connection closed due to ', lastDisconnect?.error, ', reconnecting ', shouldReconnect);
+        if (shouldReconnect) {
+          connect(instance);
+        }
+      } else if (connection === 'open') {
+        this.logger.info('opened connection');
+      }
+    });
+
+    sock.ev.on('messages.upsert', async (m: { messages: WAMessage[], type: any }) => {
+      const msg = m.messages[0];
+      if (!msg.message) return;
+
+      const messageBody = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+      if (!messageBody) return;
+
+      await this.handle({
+        body: messageBody,
+        raw: msg,
+      });
+    });
+      return sock
+    }
+    const sock = await connect(this)
+    if (callback) callback(sock)
+    return this
   }
 }

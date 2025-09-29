@@ -1,3 +1,4 @@
+import { UserFacingSocketConfig } from "baileys";
 import { z, ZodTypeAny, infer as zInfer } from "../validator/index.js";
 import { Msg } from "./message.js";
 
@@ -51,7 +52,7 @@ export interface CmdOptions<P = any> {
   schema?: ZodTypeAny;
 }
 
-export const HOOK_NAMES = ["request", "parse", "transform", "afterResponse"] as const;
+export const HOOK_NAMES = ["pairing", "request", "parse", "transform", "afterResponse"] as const;
 
 export const SCOPE_TYPES = {
   GLOBAL: "global",
@@ -61,13 +62,28 @@ export const SCOPE_TYPES = {
 
 export type ScopesType = typeof SCOPE_TYPES;
 export type Scope = ScopesType[keyof ScopesType];
-
 export type HooksType = typeof HOOK_NAMES;
 export type HookName = HooksType[number];
 export type HookRecord = Record<HookName, Hook[]>;
 
-export interface YabaiConfig {
+export interface AuthType {
+  type: 'local' //TODO: mongodb? sql?
+  path: string
+}
+
+export type Digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
+export type DigitString = `${Digit}${string}`;
+
+export interface PairingConfig {
+  number: DigitString;
+  callback?: (code: string) => void
+}
+
+export interface YabaiConfig extends Omit<UserFacingSocketConfig, "auth">{
   enableHelp?: boolean;
+  printQRCode?: boolean;
+  pairing?: PairingConfig;
+  auth: AuthType;
   scope: Scope;
   prefix: string;
   description: string;

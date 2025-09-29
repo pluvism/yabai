@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+
 export class ZodError extends Error {
     issues: { message: string; path: (string | number)[] }[];
 

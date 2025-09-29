@@ -16,3 +16,7 @@ export function cloneRecordOfArrays<
   );
   return Object.fromEntries(clonedEntries) as Record<K, V[]>;
 }
+
+export function isDigit(str: string): boolean {
+  return /^\d+$/.test(str);
+}

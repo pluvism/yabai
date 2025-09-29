@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "declaration": true,
     "target": "esnext",
     "lib": ["ES2019", "DOM"],
     "module": "nodenext",
