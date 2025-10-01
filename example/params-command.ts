@@ -1,4 +1,4 @@
-import { Yabai, z } from '../src/index.js'
+import { Yabai, t } from '../src/index.js'
 
 const bot = new Yabai({
     pairing: { number: '827372324' } //change this to your number
@@ -6,12 +6,10 @@ const bot = new Yabai({
 
 bot.cmd(
     'sum :a :b',
-    z.object({ a: z.coerce.number(), b: z.coerce.number() }),
+    t.object({ a: t.number(), b: t.number() }),
     async ({ params, msg }) => {
-        //params.a and params.b is a number
-        await msg.reply(`The sum is ${params.a + params.b}`)
-    },
-    { description: 'Calculates the sum of two numbers' }
+        await msg.reply(`The sum is ${params.a + params.b}`) // params.a and params.b is a number
+    }
 )
 
 bot.connect().catch((err) => console.error(err))

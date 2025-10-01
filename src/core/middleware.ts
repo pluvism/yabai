@@ -65,6 +65,7 @@ export class MiddlewareEngine {
                 merged.error.push(...eng.error)
             }
         }
+
         return merged
     }
 
@@ -89,7 +90,7 @@ export class MiddlewareEngine {
         return null
     }
 
-    async executeError(ctx: CommandContext<any>, error: any) {
+    async executeError<T = any>(ctx: CommandContext<T>, error: unknown) {
         for (const fn of this.error) {
             const res = await fn({ error, ctx })
             if (res) return res

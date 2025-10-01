@@ -1,4 +1,9 @@
-import { z, ZodTypeAny, infer as zInfer } from '../validator/index.js'
+import {
+    t,
+    YabaiType,
+    YabaiTypeAny,
+    infer as yInfer
+} from '../validator/index.js'
 import makeWASocket, {
     ConnectionState,
     DisconnectReason,
@@ -35,6 +40,7 @@ import { MiddlewareEngine } from './middleware.js'
 import { CommandDef } from './command.js'
 import { Boom } from '@hapi/boom'
 import P from 'pino'
+import { before } from 'node:test'
 
 const DEFAULT_CONFIG: YabaiConfig = {
     scope: SCOPE_TYPES.LOCAL,
@@ -55,7 +61,7 @@ interface YabaiSnapshot {
     hooks: HookRecord
 }
 
-class ConfigError extends Error {
+export class ConfigError extends Error {
     constructor(message: string) {
         super(message)
         this.name = 'ConfigError'
@@ -219,17 +225,17 @@ export class Yabai {
             if (plugin instanceof Yabai) {
                 for (const command of plugin.commands) {
                     if (command.originalPattern) {
-                        if (typeof command.originalPattern === 'string') {
+                        if (plugin.config.scope === SCOPE_TYPES.LOCAL) {
+                            const options: CmdOptions = {
+                                beforeHandle: [...command.middleware.beforeHandle],
+                                afterHandle: [...command.middleware.afterHandle],
+                                error: [...command.middleware.error]
+                            }
                             instance.cmd(
-                                command.originalPattern,
+                                //@ts-ignore
+                                command.originalPattern, 
                                 command.handler,
-                                command.options
-                            )
-                        } else {
-                            instance.cmd(
-                                command.originalPattern,
-                                command.handler,
-                                command.options
+                                options
                             )
                         }
                     }
@@ -260,12 +266,20 @@ export class Yabai {
             error: []
         }
 
-        if (options.beforeHandle)
-            middleware.beforeHandle.push(options.beforeHandle)
-        if (options.afterHandle)
-            middleware.afterHandle.push(options.afterHandle)
-        if (options.error) middleware.error.push(options.error)
+        if (options.beforeHandle) {
+            if (!Array.isArray(options.beforeHandle)) options.beforeHandle = [options.beforeHandle]
+            middleware.beforeHandle.push(...options.beforeHandle)
+        }
+        if (options.afterHandle) {
+            if (!Array.isArray(options.afterHandle)) options.afterHandle = [options.afterHandle]
+            middleware.afterHandle.push(...options.afterHandle)
+        }
+        if (options.error) {
+            if (!Array.isArray(options.error)) options.error = [options.error]
+            middleware.error.push(...options.error)
+        }
 
+  
         this.commands.push({
             predicate,
             handler,
@@ -357,22 +371,27 @@ export class Yabai {
         return this
     }
 
-    cmd<Pattern extends string>(
-        pattern: Pattern,
-        handler:
-            | ((
-                  ctx: CommandContext<ExtractParams<Pattern>>
-              ) => any | Promise<any>)
-            | string,
-        options?: CmdOptions<ExtractParams<Pattern>>
-    ): this
-    cmd<Pattern extends string, S extends ZodTypeAny>(
+    cmd<Pattern extends string, S extends YabaiTypeAny>(
         pattern: Pattern,
         schema: S,
         handler:
-            | ((ctx: CommandContext<zInfer<S>>) => any | Promise<any>)
+            | ((ctx: CommandContext<yInfer<S>>) => any | Promise<any>)
             | string,
-        options?: Omit<CmdOptions<zInfer<S>>, 'schema'>
+        options?: CmdOptions<yInfer<S>>
+    ): this
+
+    cmd<Pattern extends string, S extends YabaiTypeAny>(
+        pattern: Pattern,
+        handler:
+            | ((ctx: CommandContext<yInfer<S>>) => any | Promise<any>)
+            | string,
+        options: CmdOptions<yInfer<S>>
+    ): this
+
+    cmd<Pattern extends string>(
+        pattern: Pattern,
+        handler: Handler | string,
+        options?: CmdOptions
     ): this
 
     cmd<Pattern extends RegExp>(
@@ -380,38 +399,70 @@ export class Yabai {
         handler: Handler | string,
         options?: CmdOptions
     ): this
-    cmd<Pattern extends RegExp, S extends ZodTypeAny>(
+
+    cmd<Pattern extends RegExp, S extends YabaiType>(
         pattern: Pattern,
         schema: S,
         handler: Handler | string,
-        options?: Omit<CmdOptions<zInfer<S>>, 'schema'>
+        options?: CmdOptions
     ): this
 
     cmd(pattern: string | RegExp, a: any, b?: any, c?: any): this {
-        let schema: ZodTypeAny | undefined
+        let args: YabaiTypeAny | undefined
         let handler: Handler
-        let opts: CmdOptions = {}
+        let options: CmdOptions = {}
 
         if (a && typeof a.parse === 'function') {
-            schema = a
+            args = a
             handler = b
-            opts = c ?? {}
+            options = c ?? {}
         } else if (typeof a === 'function') {
             handler = a
-            opts = b ?? {}
-            if (opts) {
-                schema = opts.schema
+            options = b ?? {}
+            if (options) {
+                args = options.args
             }
         } else if (typeof a === 'string') {
             handler = async ({ msg }) => {
                 await msg.reply(a)
             }
-            opts = b ?? {}
-            if (opts) {
-                schema = opts.schema
+            options = b ?? {}
+            if (options) {
+                args = options.args
             }
         } else {
             throw new Error('Invalid cmd signature')
+        }
+        if (args && (args as any)._def?.shape) {
+            const shape = (args as any)._def.shape as Record<string, any>
+            const keys = Object.keys(shape) // preserves insertion order
+
+            let seenOptionalish = false
+
+            for (let i = 0; i < keys.length; i++) {
+                const key = keys[i]
+                const fieldSchema = shape[key]
+                const fieldDef =
+                    fieldSchema && fieldSchema._def ? fieldSchema._def : {}
+
+                const isOptionalish =
+                    fieldDef.optional === true ||
+                    fieldDef.defaultValue !== undefined ||
+                    fieldDef.nullable === true
+
+                if (isOptionalish) {
+                    seenOptionalish = true
+                    continue
+                }
+
+                if (!isOptionalish && seenOptionalish) {
+                    throw new ConfigError(
+                        `Invalid args schema: property "${key}" is required but follows an optional/default/nullable property. ` +
+                            'All optional/default/nullable properties must appear only as a trailing suffix in the object schema. ' +
+                            `Schema order: [${keys.join(', ')}]`
+                    )
+                }
+            }
         }
 
         const globalMiddleware = this.middleware
@@ -420,10 +471,19 @@ export class Yabai {
             afterHandle: [],
             error: []
         }
-
-        if (opts.beforeHandle) middleware.beforeHandle.push(opts.beforeHandle)
-        if (opts.afterHandle) middleware.afterHandle.push(opts.afterHandle)
-        if (opts.error) middleware.error.push(opts.error)
+        
+        if (options.beforeHandle) {
+            if (!Array.isArray(options.beforeHandle)) options.beforeHandle = [options.beforeHandle]
+            middleware.beforeHandle.push(...options.beforeHandle)
+        }
+        if (options.afterHandle) {
+            if (!Array.isArray(options.afterHandle)) options.afterHandle = [options.afterHandle]
+            middleware.afterHandle.push(...options.afterHandle)
+        }
+        if (options.error) {
+            if (!Array.isArray(options.error)) options.error = [options.error]
+            middleware.error.push(...options.error)
+        }
 
         const prefixSource =
             this.currentPrefix instanceof RegExp
@@ -432,19 +492,59 @@ export class Yabai {
         let finalPattern: RegExp
 
         if (typeof pattern === 'string') {
+            
             const patternParts = pattern.split(/\s+/).filter(Boolean)
-            const regexString = patternParts
-                .map((part) => {
-                    if (part.startsWith(':')) {
-                        const paramName = part.slice(1).replace(/\?$/, '')
-                        if (part.endsWith('?')) {
-                            return `(?:\\s+(?<${paramName}>.+))?`
+
+            let regexString = ''
+
+            for (let i = 0; i < patternParts.length; i++) {
+                const part = patternParts[i]
+                const sep = i === 0 ? '' : '\\s+'
+                const isLast = i === patternParts.length - 1
+
+                if (part.startsWith(':')) {
+             
+                    const raw = part.slice(1)
+                    const paramName = raw.replace(/\?$/, '')
+                    const explicitQuestion = raw.endsWith('?')
+
+               
+                    let isOptional = explicitQuestion
+
+                    if (!isOptional && args && (args as any)._def?.shape) {
+                        const shape = (args as any)._def.shape as Record<
+                            string,
+                            any
+                        >
+                        const propSchema = shape[paramName]
+                        if (propSchema) {
+                            const def = propSchema._def ?? {}
+                            if (
+                                def.defaultValue !== undefined ||
+                                def.optional === true ||
+                                def.nullable === true
+                            ) {
+                                isOptional = true
+                            }
                         }
-                        return `(?<${paramName}>.+)`
                     }
-                    return escapeRegExp(part)
-                })
-                .join('\\s+')
+
+                   
+                    const capture = isLast
+                        ? `(?<${paramName}>.+)`
+                        : `(?<${paramName}>[^\\s]+)`
+
+                    
+                    regexString += isOptional
+                        ? `(?:${sep}${capture})?`
+                        : `${sep}${capture}`
+
+                    continue
+                }
+
+                // plain literal part
+                regexString += `${sep}${escapeRegExp(part)}`
+            }
 
             const separator = prefixSource && regexString ? '\\s+' : ''
             finalPattern = new RegExp(
@@ -463,9 +563,9 @@ export class Yabai {
             originalPattern: pattern,
             pattern: finalPattern,
             handler,
-            schema,
+            args,
             middleware: MiddlewareEngine.mergeAll(globalMiddleware, middleware),
-            options: opts
+            options
         })
 
         return this
@@ -501,6 +601,20 @@ export class Yabai {
                     isMatch = true
                     ctx.params = match.groups || {}
                 }
+                if (isMatch && cmd.args && (cmd.args as any)._def?.shape) {
+                    const shape = (cmd.args as any)._def.shape as Record<
+                        string,
+                        any
+                    >
+                    for (const key of Object.keys(shape)) {
+                        if (ctx.params[key] === undefined) {
+                            const fieldDef = shape[key]._def ?? {}
+                            if (fieldDef.nullable === true) {
+                                ctx.params[key] = null
+                            }
+                        }
+                    }
+                }
             } else if (cmd.predicate) {
                 if (cmd.predicate(message.raw)) {
                     isMatch = true
@@ -508,12 +622,12 @@ export class Yabai {
             }
 
             if (isMatch) {
-                if (cmd.schema) {
+                if (cmd.args) {
                     try {
-                        const parsedParams = cmd.schema.parse(ctx.params)
+                        const parsedParams = cmd.args.parse(ctx.params)
                         ctx.params = parsedParams as Record<string, any>
                     } catch (e) {
-                        await this.handleError(ctx, e)
+                        await this.middleware.executeError(ctx, e)
                         return
                     }
                 }
@@ -527,7 +641,6 @@ export class Yabai {
                         }
                         return
                     }
-
                     const result = await cmd.handler(ctx)
                     ctx.result = result
 
@@ -539,7 +652,7 @@ export class Yabai {
 
                     await this.executeHooks('afterResponse', ctx)
                 } catch (err) {
-                    await this.handleError(ctx, err)
+                    await cmd.middleware.executeError(ctx, err)
                 }
                 return // Stop after the first matching command
             }
@@ -549,11 +662,6 @@ export class Yabai {
     /** --- Helpers --- **/
     private get currentGroup() {
         return this.groups[this.groups.length - 1]
-    }
-
-    private async handleError(ctx: CommandContext, error: unknown) {
-        this.logger.error('Request error:', error)
-        return this.middleware.executeError(ctx, error)
     }
 
     async connect(callback?: (sock: WASocket) => any) {

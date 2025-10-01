@@ -1,5 +1,5 @@
 import { UserFacingSocketConfig } from 'baileys'
-import { z, ZodTypeAny, infer as zInfer } from '../validator/index.js'
+import { infer as yInfer, YabaiTypeAny } from '../validator/index.js'
 import { Msg } from './message.js'
 
 /** --- Type‑level Param Extraction (space‑delimited) --- **/
@@ -30,7 +30,7 @@ export interface CommandContext<P = Record<string, any>> {
     raw: any
     params: P
     set: { status: number; headers: Record<string, string> }
-    result?: any
+    result?: unknown
     error?: unknown
 }
 
@@ -40,18 +40,18 @@ export type Middleware<T = any> = (
 ) => any
 
 export type Handler<P = any> = (ctx: CommandContext<P>) => any | Promise<any>
-export type ErrorHandler = (arg: {
+export type ErrorHandler<P = any> = (arg: {
     error: any
-    ctx: CommandContext<any>
+    ctx: CommandContext<P>
 }) => any
 export type Hook = (ctx: CommandContext<any>) => any | Promise<any>
 
-export interface CmdOptions<P = any> {
+export interface CmdOptions<T extends YabaiTypeAny = YabaiTypeAny> {
     description?: string
-    beforeHandle?: Middleware
-    afterHandle?: Middleware<P>
-    error?: ErrorHandler
-    schema?: ZodTypeAny
+    beforeHandle?: Middleware[] | Middleware<yInfer<T>>
+    afterHandle?: Middleware<yInfer<T>>[] | Middleware<yInfer<T>>
+    error?: ErrorHandler<yInfer<T>>[] | ErrorHandler<yInfer<T>>
+    args?: T
 }
 
 export const HOOK_NAMES = [

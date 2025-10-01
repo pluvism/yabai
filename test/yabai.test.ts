@@ -1,4 +1,5 @@
-import { Yabai, z } from '../src/index.js'
+import { ConfigError } from '../src/core/yabai.js'
+import { Yabai, t } from '../src/index.js'
 import { strict as assert } from 'node:assert'
 
 const tests: { [key: string]: () => Promise<void> } = {}
@@ -92,13 +93,33 @@ test('should extract parameters correctly', async () => {
     assert.equal(repliedText, 'hello world')
 })
 
-test('should validate with zod schema', async () => {
+test('should throw for optional before required', async () => {
+    const bot = new Yabai()
+    assert.throws(() => {
+        bot.cmd('x :a :b', async () => {}, {
+            args: t.object({ a: t.number().optional(), b: t.number() })
+        })
+    }, ConfigError)
+})
+
+test('should not throw for required then optional suffix', async () => {
+    const bot = new Yabai()
+    assert.doesNotThrow(() => {
+        bot.cmd('x :a :b', async () => {}, {
+            args: t.object({ a: t.number(), b: t.number().optional() })
+        })
+    })
+})
+
+test('should validate with yabai schema', async () => {
     const bot = new Yabai()
     bot.cmd(
         'sum :a :b',
-        z.object({ a: z.coerce.number(), b: z.coerce.number() }),
         async ({ params, msg }) => {
             await msg.reply(`Sum is ${params.a + params.b}`)
+        },
+        {
+            args: t.object({ a: t.number(), b: t.number() })
         }
     )
 
@@ -117,12 +138,66 @@ test('should validate with zod schema', async () => {
     assert.equal(repliedText, 'Sum is 30')
 })
 
-test('should handle zod schema validation failure', async () => {
+test('should validate with yabai schema default', async () => {
+    const bot = new Yabai()
+    bot.cmd(
+        'hi :name',
+        t.object({ name: t.string().default('world!') }),
+        async ({ params, msg }) => {
+            await msg.reply(`Hello ${params.name}`)
+        }
+    )
+
+    let repliedText = ''
+    bot.sock = {
+        sendMessage: async (jid: any, content: any, options: any) => {
+            repliedText = content.text
+            return {} as any
+        }
+    } as any
+
+    await bot.handle({
+        body: 'hi',
+        raw: { key: { remoteJid: 'test' } } as any
+    })
+    assert.equal(repliedText, 'Hello world!')
+})
+
+test('should validate with yabai schema nullable', async () => {
+    const bot = new Yabai()
+    bot.cmd(
+        'weather :name',
+        t.object({ name: t.string().nullable() }),
+        async ({ params, msg }) => {
+            if (params.name === null) {
+                await msg.reply('current weather is 30')
+            } else {
+                await msg.reply(`current weather in ${params.name} is 29`)
+            }
+        }
+    )
+
+    let repliedText = ''
+    bot.sock = {
+        sendMessage: async (jid: any, content: any, options: any) => {
+            repliedText = content.text
+            return {} as any
+        }
+    } as any
+
+    await bot.handle({
+        body: 'weather',
+        raw: { key: { remoteJid: 'test' } } as any
+    })
+    assert.equal(repliedText, 'current weather is 30')
+})
+
+test('should handle yabai schema validation failure', async () => {
     const bot = new Yabai()
     let replied = false
     bot.cmd(
         'sum :a :b',
-        z.object({ a: z.coerce.number(), b: z.coerce.number() }),
+        t.object({ a: t.number(), b: t.number() }),
         async ({ params, msg }) => {
             await msg.reply(`Sum is ${params.a + params.b}`)
         }
@@ -197,6 +272,63 @@ test('should handle regex commands', async () => {
     assert.equal(repliedText, 'sticker command')
 })
 
+test('should execute middleware only for cmd scope', async () => {
+    const bot = new Yabai()
+    let beforeCalled = false
+    let afterCalled = false
+
+    bot.cmd(
+        'test',
+        async ({ msg }) => {
+            msg.reply('tested')
+        },
+        {
+            beforeHandle() {
+                beforeCalled = true
+            },
+            afterHandle() {
+                afterCalled = true
+            }
+        }
+    )
+
+    bot.sock = mockSock
+
+    await bot.handle({
+        body: 'test',
+        raw: { key: { remoteJid: 'test' } } as any
+    })
+
+    assert.ok(beforeCalled, 'beforeHandle was not called')
+    assert.ok(afterCalled, 'afterHandle was not called')
+})
+
+test('should execute error middleware', async () => {
+    const bot = new Yabai()
+    let errorCalled = false
+
+    bot.cmd(
+        'test',
+        async ({ msg }) => {
+            throw 'error'
+        },
+        {
+            error({ error }) {
+                errorCalled = true
+            }
+        }
+    )
+
+    bot.sock = mockSock
+
+    await bot.handle({
+        body: 'test',
+        raw: { key: { remoteJid: 'test' } } as any
+    })
+
+    assert.ok(errorCalled, 'error middleware not called')
+})
+
 test('should execute middleware', async () => {
     const bot = new Yabai()
     let beforeCalled = false
@@ -222,6 +354,75 @@ test('should execute middleware', async () => {
 
     assert.ok(beforeCalled, 'beforeHandle was not called')
     assert.ok(afterCalled, 'afterHandle was not called')
+})
+
+test('should not inherit middleware on local scope', async () => {
+    let beforeCalled = false
+    let imageCalled = 0
+    let repliedPing = false
+    class CustomError extends Error {
+        constructor(message: string) {
+            super(message)
+            this.name = 'CustomError'
+        }
+    }
+    const image = new Yabai()
+    image
+        .onBeforeHandle(async (ctx) => {
+            beforeCalled = true
+            if (ctx.msg.type !== 'imageMessage') {
+                return 'not an image message'
+            }
+        })
+        .cmd('image', ({ msg }) => {
+            imageCalled += 1
+            assert.ok(
+                msg.type === 'imageMessage',
+                'message type not a imageMessage'
+            )
+        })
+
+    const bot = new Yabai()
+    bot.use(image).cmd('ping', async ({ msg }) => {
+        await msg.reply('Pong!')
+    })
+
+    bot.sock = {
+        sendMessage: async (jid: any, content: any, options: any) => {
+            assert.equal(content.text, 'Pong!')
+            repliedPing = true
+            return {} as any
+        }
+    } as any
+
+    
+
+    await bot.handle({
+        body: 'image',
+        raw: {
+            key: { remoteJid: 'test' },
+            message: {
+                imageMessage: {}
+            }
+        } as any
+    })
+    assert.ok(beforeCalled, 'onBeforeHandle not called')
+    assert.ok(imageCalled === 1, 'image command not called')
+
+    await bot.handle({
+        body: 'ping',
+        raw: { key: { remoteJid: 'test' } }
+    })
+
+    assert.ok(repliedPing, 'ping not called')
+
+
+    await bot.handle({
+            body: 'image',
+            raw: { key: { remoteJid: 'test' } }
+        })
+
+    assert.ok(imageCalled === 1, 'image called on non-imageMessage')
 })
 
 test('should execute hooks', async () => {
