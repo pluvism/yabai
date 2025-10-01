@@ -6,8 +6,8 @@ export class ValidationError extends Error {
     constructor(issues: { message: string; path: (string | number)[] }[]) {
         const message =
             issues.length === 1
-                ? `Validation error: ${issues[0].message} at path "${issues[0].path.join('.')}"`
-                : `Validation error: ${issues.length} issues found`
+                ? `${issues[0].message} at path "${issues[0].path.join('.')}"`
+                : `${issues.length} issues found`
         super(message)
         this.issues = issues
         this.name = 'ValidationError'

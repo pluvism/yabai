@@ -47,7 +47,7 @@ const DEFAULT_CONFIG: YabaiConfig = {
     prefix: '',
     description: '',
     auth: { type: 'local', path: '.auth_yabai' },
-    logger: P({ level: 'warn' })
+    logger: P({ level: 'silent' })
 }
 
 type Plugin =
@@ -227,13 +227,17 @@ export class Yabai {
                     if (command.originalPattern) {
                         if (plugin.config.scope === SCOPE_TYPES.LOCAL) {
                             const options: CmdOptions = {
-                                beforeHandle: [...command.middleware.beforeHandle],
-                                afterHandle: [...command.middleware.afterHandle],
+                                beforeHandle: [
+                                    ...command.middleware.beforeHandle
+                                ],
+                                afterHandle: [
+                                    ...command.middleware.afterHandle
+                                ],
                                 error: [...command.middleware.error]
                             }
                             instance.cmd(
                                 //@ts-ignore
-                                command.originalPattern, 
+                                command.originalPattern,
                                 command.handler,
                                 options
                             )
@@ -267,11 +271,13 @@ export class Yabai {
         }
 
         if (options.beforeHandle) {
-            if (!Array.isArray(options.beforeHandle)) options.beforeHandle = [options.beforeHandle]
+            if (!Array.isArray(options.beforeHandle))
+                options.beforeHandle = [options.beforeHandle]
             middleware.beforeHandle.push(...options.beforeHandle)
         }
         if (options.afterHandle) {
-            if (!Array.isArray(options.afterHandle)) options.afterHandle = [options.afterHandle]
+            if (!Array.isArray(options.afterHandle))
+                options.afterHandle = [options.afterHandle]
             middleware.afterHandle.push(...options.afterHandle)
         }
         if (options.error) {
@@ -279,7 +285,6 @@ export class Yabai {
             middleware.error.push(...options.error)
         }
 
-  
         this.commands.push({
             predicate,
             handler,
@@ -471,13 +476,15 @@ export class Yabai {
             afterHandle: [],
             error: []
         }
-        
+
         if (options.beforeHandle) {
-            if (!Array.isArray(options.beforeHandle)) options.beforeHandle = [options.beforeHandle]
+            if (!Array.isArray(options.beforeHandle))
+                options.beforeHandle = [options.beforeHandle]
             middleware.beforeHandle.push(...options.beforeHandle)
         }
         if (options.afterHandle) {
-            if (!Array.isArray(options.afterHandle)) options.afterHandle = [options.afterHandle]
+            if (!Array.isArray(options.afterHandle))
+                options.afterHandle = [options.afterHandle]
             middleware.afterHandle.push(...options.afterHandle)
         }
         if (options.error) {
@@ -492,7 +499,6 @@ export class Yabai {
         let finalPattern: RegExp
 
         if (typeof pattern === 'string') {
-            
             const patternParts = pattern.split(/\s+/).filter(Boolean)
 
             let regexString = ''
@@ -503,12 +509,10 @@ export class Yabai {
                 const isLast = i === patternParts.length - 1
 
                 if (part.startsWith(':')) {
-             
                     const raw = part.slice(1)
                     const paramName = raw.replace(/\?$/, '')
                     const explicitQuestion = raw.endsWith('?')
 
-               
                     let isOptional = explicitQuestion
 
                     if (!isOptional && args && (args as any)._def?.shape) {
@@ -529,12 +533,10 @@ export class Yabai {
                         }
                     }
 
-                   
                     const capture = isLast
                         ? `(?<${paramName}>.+)`
                         : `(?<${paramName}>[^\\s]+)`
 
-                    
                     regexString += isOptional
                         ? `(?:${sep}${capture})?`
                         : `${sep}${capture}`
@@ -622,17 +624,12 @@ export class Yabai {
             }
 
             if (isMatch) {
-                if (cmd.args) {
-                    try {
+                try {
+                    if (cmd.args) {
                         const parsedParams = cmd.args.parse(ctx.params)
                         ctx.params = parsedParams as Record<string, any>
-                    } catch (e) {
-                        await this.middleware.executeError(ctx, e)
-                        return
                     }
-                }
 
-                try {
                     const beforeResult = await cmd.middleware.executeBefore(ctx)
                     if (beforeResult) {
                         ctx.result = beforeResult
@@ -667,24 +664,24 @@ export class Yabai {
     async connect(callback?: (sock: WASocket) => any) {
         const connect = async (instance: this) => {
             const { state, saveCreds } = await useMultiFileAuthState(
-                this.config.auth.path
+                instance.config.auth.path
             )
             // TODO: another auth type
             const sock = makeWASocket({
-                ...this.config,
+                ...instance.config,
                 auth: state
             })
 
-            this.sock = sock
-            // Config already validated on this.constructor
+            instance.sock = sock
+            // Config already validated on instance.constructor
             if (!sock.authState.creds.registered) {
                 setTimeout(async () => {
-                    if (this.config.pairing?.number) {
+                    if (instance.config.pairing?.number) {
                         const code = await sock.requestPairingCode(
-                            this.config.pairing.number
+                            instance.config.pairing.number
                         )
-                        if (this.config.pairing.callback) {
-                            this.config.pairing.callback(code)
+                        if (instance.config.pairing.callback) {
+                            instance.config.pairing.callback(code)
                         } else {
                             console.log(
                                 'WARNING!! Implicit callback() for pairing, set onPairing() as console.log()'
@@ -699,23 +696,17 @@ export class Yabai {
 
             sock.ev.on(
                 'connection.update',
-                (update: Partial<ConnectionState>) => {
+                async (update: Partial<ConnectionState>) => {
                     const { connection, lastDisconnect } = update
                     if (connection === 'close') {
                         const shouldReconnect =
                             (lastDisconnect?.error as Boom)?.output
                                 ?.statusCode !== DisconnectReason.loggedOut
-                        this.logger.info(
-                            'connection closed due to ',
-                            lastDisconnect?.error,
-                            ', reconnecting ',
-                            shouldReconnect
-                        )
                         if (shouldReconnect) {
-                            connect(instance)
+                            await connect(instance)
                         }
                     } else if (connection === 'open') {
-                        this.logger.info('opened connection')
+                        if (callback) callback(sock)
                     }
                 }
             )
@@ -732,7 +723,7 @@ export class Yabai {
                         ''
                     if (!messageBody) return
 
-                    await this.handle({
+                    await instance.handle({
                         body: messageBody,
                         raw: msg
                     })
@@ -740,8 +731,7 @@ export class Yabai {
             )
             return sock
         }
-        const sock = await connect(this)
-        if (callback) callback(sock)
+        await connect(this)
         return this
     }
 }

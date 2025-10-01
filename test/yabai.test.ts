@@ -395,8 +395,6 @@ test('should not inherit middleware on local scope', async () => {
         }
     } as any
 
-    
-
     await bot.handle({
         body: 'image',
         raw: {
@@ -416,11 +414,10 @@ test('should not inherit middleware on local scope', async () => {
 
     assert.ok(repliedPing, 'ping not called')
 
-
     await bot.handle({
-            body: 'image',
-            raw: { key: { remoteJid: 'test' } }
-        })
+        body: 'image',
+        raw: { key: { remoteJid: 'test' } }
+    })
 
     assert.ok(imageCalled === 1, 'image called on non-imageMessage')
 })
