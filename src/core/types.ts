@@ -1,4 +1,4 @@
-import { UserFacingSocketConfig } from 'baileys'
+import { SocketConfig, UserFacingSocketConfig } from 'baileys'
 import { infer as yInfer, YabaiTypeAny } from '../validator/index.js'
 import { Msg } from './message.js'
 
@@ -87,9 +87,15 @@ export interface PairingConfig {
     callback?: (code: string) => void
 }
 
-export interface YabaiConfig extends Omit<UserFacingSocketConfig, 'auth'> {
+export interface QRCodeConfig {
+    small?: boolean
+    timeout?: number // ms
+}
+
+export interface YabaiConfig
+    extends Omit<UserFacingSocketConfig, 'auth' | 'qrTimeout'> {
     enableHelp?: boolean
-    printQRCode?: boolean
+    qrcode?: QRCodeConfig
     pairing?: PairingConfig
     auth: AuthType
     scope: Scope

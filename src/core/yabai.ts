@@ -16,7 +16,8 @@ import {
     isObject,
     escapeRegExp,
     cloneRecordOfArrays,
-    isDigit
+    isDigit,
+    isEmpty
 } from '../utils/index.js'
 import { Msg, serialize } from './message.js'
 import {
@@ -40,13 +41,14 @@ import { MiddlewareEngine } from './middleware.js'
 import { CommandDef } from './command.js'
 import { Boom } from '@hapi/boom'
 import P from 'pino'
-import { before } from 'node:test'
+import * as qrcode from '../lib/qrcode-terminal/main.js'
 
 const DEFAULT_CONFIG: YabaiConfig = {
     scope: SCOPE_TYPES.LOCAL,
     prefix: '',
     description: '',
     auth: { type: 'local', path: '.auth_yabai' },
+    qrcode: { small: true, timeout: 60_000 },
     logger: P({ level: 'silent' })
 }
 
@@ -132,9 +134,9 @@ export class Yabai {
     private validateConfig(
         config: Partial<YabaiConfig>
     ): asserts config is YabaiConfig {
-        if (config.printQRCode && config.pairing) {
+        if (!isEmpty(config.qrcode) && !isEmpty(config.pairing)) {
             throw new ConfigError(
-                'Cannot set `config.printQRCode` when config.pairing is set'
+                'Cannot set `config.qrcode` when config.pairing is set'
             )
         }
 
@@ -669,7 +671,8 @@ export class Yabai {
             // TODO: another auth type
             const sock = makeWASocket({
                 ...instance.config,
-                auth: state
+                auth: state,
+                qrTimeout: instance.config.qrcode?.timeout
             })
 
             instance.sock = sock
@@ -697,7 +700,11 @@ export class Yabai {
             sock.ev.on(
                 'connection.update',
                 async (update: Partial<ConnectionState>) => {
-                    const { connection, lastDisconnect } = update
+                    const { connection, lastDisconnect, qr } = update
+                    if (instance.config.qrcode && qr) {
+                        qrcode.generate(qr, instance.config.qrcode)
+                    }
+
                     if (connection === 'close') {
                         const shouldReconnect =
                             (lastDisconnect?.error as Boom)?.output
